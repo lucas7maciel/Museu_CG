@@ -11,7 +11,7 @@ try {
     $sources = @(
         'src\main.c', 'src\museum.c', 'src\camera.c', 'src\building.c',
         'src\interaction.c', 'src\geometry.c', 'src\artwork_render.c',
-        'src\scene.c', 'src\self_test.c', 'src\lighting.c',
+        'src\scene.c', 'src\textures.c', 'src\self_test.c', 'src\lighting.c',
         'src\balance.c', 'src\exhibits.c'
     )
     & $compiler cc -std=c99 -Wall -Wextra -Wpedantic -O2 @sources `

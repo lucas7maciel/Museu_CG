@@ -3,11 +3,8 @@
 #include "render_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
 
 RenderState renderer={.geometry_step=.60};
-static GLuint textures[T_COUNT];
 static Vec3 object_origin;
 static double object_angle,object_cos=1,object_sin;
 static double object_roll,object_roll_cos=1,object_roll_sin;
@@ -43,69 +40,21 @@ void object_begin_roll(Vec3 origin,double angle) {
     if (!renderer.collecting_shadows) glRotated(angle,0,0,1);
 }
 
-static void make_texture(int id, int red, int green, int blue) {
-    unsigned char pixels[64 * 64 * 3];
-    uint32_t seed = 42;
-    int base[3] = {red, green, blue};
-    for (int y = 0; y < 64; ++y) for (int x = 0; x < 64; ++x) {
-        seed = seed * 1664525u + 1013904223u;
-        int noise = (int)((seed >> 16) % 15) - 7;
-        if (id == T_STONE && (x == 0 || y == 0)) noise = -26;
-        for (int c = 0; c < 3; ++c)
-            pixels[(y * 64 + x) * 3 + c] = (unsigned char)clamp(base[c] + noise, 0, 255);
-    }
-    glGenTextures(1, &textures[id]);
-    glBindTexture(GL_TEXTURE_2D, textures[id]);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 64, 64, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels);
-}
-
-static int load_earth_texture(const char *executable) {
-    char path[2048];
-    FILE *file=fopen("assets/earth.ppm","rb");
-    if (!file) {
-        const char *slash=strrchr(executable,'/'),*backslash=strrchr(executable,'\\');
-        if (backslash && (!slash || backslash>slash)) slash=backslash;
-        if (slash && (size_t)(slash-executable)+18<sizeof(path)) {
-            snprintf(path,sizeof(path),"%.*s/assets/earth.ppm",(int)(slash-executable),executable);
-            file=fopen(path,"rb");
-        }
-    }
-    if (!file) { fputs("Textura ausente: mantenha assets/earth.ppm junto do executavel ou na pasta do projeto.\n",stderr); return 0; }
-    char magic[3]; int width,height,max_value;
-    if (fscanf(file,"%2s %d %d %d",magic,&width,&height,&max_value)!=4 || strcmp(magic,"P6") ||
-        width<1 || width>8192 || height<1 || height>4096 || max_value!=255) { fclose(file); return 0; }
-    int separator=fgetc(file);
-    if (separator=='\r') { int next=fgetc(file); if (next!='\n') ungetc(next,file); }
-    else if (separator!='\n' && separator!=' ' && separator!='\t') { fclose(file); return 0; }
-    size_t length=(size_t)width*(size_t)height*3;
-    unsigned char *pixels=malloc(length);
-    if (!pixels) { fclose(file); return 0; }
-    int ok=fread(pixels,1,length,file)==length;
-    fclose(file);
-    if (ok) {
-        glGenTextures(1,&textures[T_EARTH]); glBindTexture(GL_TEXTURE_2D,textures[T_EARTH]);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
-        ok=gluBuild2DMipmaps(GL_TEXTURE_2D,GL_RGB,width,height,GL_RGB,GL_UNSIGNED_BYTE,pixels)==0;
-    }
-    free(pixels);
-    return ok;
-}
-
 void material(Vec3 color, int tex, double shiny) {
     (void)shiny;
     if (renderer.collecting_shadows) return;
     glColor4d(color.x, color.y, color.z, 1);
     if (tex != T_NONE) {
         glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, textures[tex]);
+        glBindTexture(GL_TEXTURE_2D, texture_handle(tex));
     } else glDisable(GL_TEXTURE_2D);
+}
+
+static void box_texcoord(int tex,Vec3 point,Vec3 normal) {
+    if (tex==T_NONE) return;
+    double u,v;
+    texture_coordinates(tex,point,normal,&u,&v);
+    glTexCoord2d(u,v);
 }
 
 void box(Vec3 pos, Vec3 size, Vec3 color, int tex, double shiny) {
@@ -131,10 +80,11 @@ void box(Vec3 pos, Vec3 size, Vec3 color, int tex, double shiny) {
     if (museum.unlit_mode) {
         /* Sem subdivisao, alocacao ou calculo de luz: seis faces por caixa. */
         for (int f=0;f<6;++f) {
-            double u=(f<2 ? size.x : f<4 ? size.z : size.x)/2;
-            double v=(f<4 ? size.y : size.z)/2;
             for (int k=0;k<4;++k) {
-                glTexCoord2d((k==1 || k==2) ? u : 0,k>=2 ? v : 0);
+                Vec3 point=V(pos.x+vertices[f][k][0]*size.x*.5,
+                             pos.y+vertices[f][k][1]*size.y*.5,
+                             pos.z+vertices[f][k][2]*size.z*.5);
+                box_texcoord(tex,point,V(normals[f][0],normals[f][1],normals[f][2]));
                 glVertex3f(vertices[f][k][0]*.5f,vertices[f][k][1]*.5f,vertices[f][k][2]*.5f);
             }
         }
@@ -168,7 +118,10 @@ void box(Vec3 pos, Vec3 size, Vec3 color, int tex, double shiny) {
                      (vertices[f][0][1]+s*(vertices[f][1][1]-vertices[f][0][1])+t*(vertices[f][3][1]-vertices[f][0][1]))*.5,
                      (vertices[f][0][2]+s*(vertices[f][1][2]-vertices[f][0][2])+t*(vertices[f][3][2]-vertices[f][0][2]))*.5);
             Vec3 lit=colors[cy*(nu+1)+cx];
-            glColor3d(lit.x,lit.y,lit.z); glTexCoord2d(s*u,t*v); glVertex3d(p.x,p.y,p.z);
+            glColor3d(lit.x,lit.y,lit.z);
+            box_texcoord(tex,V(pos.x+p.x*size.x,pos.y+p.y*size.y,pos.z+p.z*size.z),
+                         V(normals[f][0],normals[f][1],normals[f][2]));
+            glVertex3d(p.x,p.y,p.z);
         }
         free(colors);
     }
@@ -201,17 +154,14 @@ void draw_sphere(Vec3 center,double radius,Vec3 base) {
 }
 
 int render_init(const char *executable) {
-    make_texture(T_GRASS,106,128,91);
-    make_texture(T_STONE,196,194,181);
-    if (load_earth_texture(executable)) return 1;
-    fputs("Falha ao carregar a textura da Terra.\n",stderr);
-    glDeleteTextures(T_COUNT-1,&textures[1]);
+    if (textures_init(executable)) return 1;
+    fputs("Falha ao carregar as texturas.\n",stderr);
     return 0;
 }
 
 void render_shutdown(void) {
     clear_render_cache();
-    glDeleteTextures(T_COUNT-1,&textures[1]);
+    textures_shutdown();
 }
 
 static void lit_vertex(Vec3 p,Vec3 normal,Vec3 base) {

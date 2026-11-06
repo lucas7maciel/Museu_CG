@@ -28,6 +28,7 @@ add_executable(museu3d
     src/building.c
     src/interaction.c
     src/geometry.c
+    src/textures.c
     src/artwork_render.c
     src/scene.c
     src/self_test.c

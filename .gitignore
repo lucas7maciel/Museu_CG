@@ -1,5 +1,5 @@
 # Compilacoes locais (Windows, Linux, WSL e CMake)
-docs/oquefazer.txt
+docs/
 /build*/
 /cmake-build*/
 CMakeFiles/

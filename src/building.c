@@ -270,7 +270,7 @@ static void draw_roof(void) {
     for (size_t i=0;i<COUNT(rooms);++i) {
         Rect r=floor_rect(i);
         box(V((r.x0+r.x1)/2,ROOF_Y+.16,(r.z0+r.z1)/2),
-            V(r.x1-r.x0,.32,r.z1-r.z0),V(.78,.78,.73),T_NONE,8);
+            V(r.x1-r.x0,.32,r.z1-r.z0),V(.88,.87,.83),T_CEILING,8);
     }
 }
 
@@ -290,7 +290,7 @@ void static_geometry(void) {
     for (size_t i = 0; i < COUNT(rooms); ++i) {
         Rect r = floor_rect(i);
         box(V((r.x0+r.x1)/2,FLOOR_Y/2,(r.z0+r.z1)/2),
-            V(r.x1-r.x0,FLOOR_Y,r.z1-r.z0),V(.73,.74,.71),T_STONE,30);
+            V(r.x1-r.x0,FLOOR_Y,r.z1-r.z0),V(.94,.90,.82),T_FLOOR,30);
     }
     for (int i = 0; i < 4; ++i) {
         Rect r = stair_rect(i);
@@ -298,7 +298,7 @@ void static_geometry(void) {
         box(V(0,h/2,(r.z0+r.z1)/2),V(r.x1-r.x0,h,r.z1-r.z0),V(.79,.76,.66),T_STONE,16);
     }
     for (size_t i = 0; i < wall_count; ++i)
-        box(walls[i].center,walls[i].size,V(.9,.88,.81),T_NONE,12);
+        box(walls[i].center,walls[i].size,V(.9,.88,.81),T_WALL,12);
     draw_roof();
 }
 

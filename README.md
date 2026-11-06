@@ -1,6 +1,6 @@
 # Museu 3D em C — OpenGL
 
-Museu modelado em C99 com OpenGL 2.1 e GLFW, seguindo a planta de referência. Toda a geometria é construída por vértices, paralelepípedos e malhas paramétricas no código, sem importar modelos. As texturas de piso e terreno são procedurais; a textura terrestre da primeira exposição está em `assets`, com origem documentada em `assets/CREDITS.md`. O cálculo das luzes e da oclusão está em `src/lighting.c` e `include/lighting.h`.
+Museu modelado em C99 com OpenGL 2.1 e GLFW, seguindo a planta de referência. Toda a geometria é construída por vértices, paralelepípedos e malhas paramétricas no código, sem importar modelos. As texturas de piso, paredes, teto, pedra e terreno são procedurais; a textura terrestre da primeira exposição está em `assets`, com origem documentada em `assets/CREDITS.md`. O cálculo das luzes e da oclusão está em `src/lighting.c` e `include/lighting.h`.
 
 ## Organização e arquivos essenciais
 
@@ -12,7 +12,9 @@ Projeto_CG/
 │   ├── camera.c         # Câmera e deslocamento em primeira pessoa
 │   ├── building.c       # Edifício, portão, janelas e colisões
 │   ├── interaction.c    # Seleção pela mira, eventos e atualização das obras
-│   ├── geometry.c       # Primitivas, transformações, materiais e texturas
+│   ├── geometry.c       # Primitivas, transformações e aplicação dos materiais
+│   ├── textures.c       # Geração das superfícies e carregamento da Terra
+│   ├── textures.h       # Identificadores e interface interna das texturas
 │   ├── artwork_render.c # Desenho das seis exposições
 │   ├── scene.c          # Cena, luminárias, sombras, caches, mira e capturas
 │   ├── render_internal.h # Interface interna dos módulos de desenho
@@ -132,7 +134,7 @@ O eixo Y representa altura. A entrada fica em +Z e o salão posterior em −Z. A
 
 As quatro obras do salão principal ocupam os vértices de um retângulo de 8 × 10 no plano X/Z. Perto da entrada (Z=15), ficam a Terra à esquerda (X=−4) e a balança à direita (X=4). Perto do corredor (Z=5), ficam a escultura à esquerda e o pêndulo à direita, nas mesmas colunas. O caminho central continua livre. As posições são definidas em `include/museum_layout.h`; colisões, pontos de interação e luminárias acompanham as obras.
 
-As dimensões da planta estão em `rooms`, os vãos em `left_windows`, `right_windows` e `entrance`, e as paredes são montadas em `build_museum`, em `src/building.c`. As mesmas peças definem a renderização e as colisões. A modelagem das obras está em `src/artwork_render.c`; as primitivas e texturas ficam em `src/geometry.c`.
+As dimensões da planta estão em `rooms`, os vãos em `left_windows`, `right_windows` e `entrance`, e as paredes são montadas em `build_museum`, em `src/building.c`. As mesmas peças definem a renderização e as colisões. A modelagem das obras está em `src/artwork_render.c`; as primitivas ficam em `src/geometry.c` e as texturas em `src/textures.c`.
 
 ## Controles
 
@@ -171,6 +173,18 @@ As folhas das janelas também têm colisão e pausam antes de atingir o personag
 A câmera possui apenas o modo de caminhada em primeira pessoa. Não há comandos para liberar o cursor, mudar a perspectiva ou ocultar o teto, incluindo opções de inicialização.
 
 ## Materiais e iluminação
+
+| Superfície | Textura |
+| --- | --- |
+| Piso dos dois salões e do corredor | Madeira clara com veios e tábuas desencontradas, de 0,32 × 2,56 unidades |
+| Paredes internas e externas | Reboco pintado em tom claro, com granulação fina |
+| Teto | Placas acústicas claras de 0,60 × 0,60 unidades, com juntas e pequenos pontos |
+| Degraus e caminho da entrada | Pedra clara com granulação e juntas de 1 unidade |
+| Terreno | Grama com variação de cor |
+
+As cinco texturas de superfície são geradas em `src/textures.c`, com 256 × 256 pixels cada, apenas na inicialização. Não precisam de imagens adicionais em `assets/`, downloads ou novas bibliotecas. Os detalhes de juntas e perfurações são visuais: as superfícies mantêm a mesma geometria sólida e as mesmas colisões. A textura terrestre continua sendo carregada de `assets/earth.ppm`.
+
+As coordenadas UV usam as posições na cena para manter a escala e o alinhamento entre os blocos das paredes e os pisos conectados. Cada material tem seu tamanho de repetição; o mapeamento considera a orientação de cada face. A filtragem usa mipmaps para reduzir a cintilação à distância. As cores das texturas são combinadas com a iluminação quente existente e também aparecem no modo leve, sem aumentar as subdivisões nem executar cálculos de luz ou sombra nesse modo. Materiais das obras, emissores de luz e superfícies brancas do laboratório RGB preservam suas cores.
 
 As janelas usam painéis sólidos e opacos com espessura, desenhados junto com suas molduras e acompanhando a rotação de cada folha. Quando fechadas, não é possível enxergar através delas. A cobertura também é sólida e opaca, sem vidro ou grade metálica. A cena usa materiais com alfa 1 e teste/gravação de profundidade normais, sem passagem de transparência.
 
@@ -259,6 +273,127 @@ Para iniciar diante de cada obra no Linux:
 Para capturas de estados específicos, combine com `--sculpture-open`, `--pendulum-pulled`, `--gears-turned`, `--colors-red-only` ou `--colors-moved`, e `--screenshot caminho.ppm`. As capturas mantêm as quatro novas obras no estado escolhido, sem avançar sua animação. Na execução normal, uma escultura inicialmente aberta se recompõe e um pêndulo inicialmente puxado começa a oscilar.
 
 O laboratório usa três fontes posicionais direcionadas para o painel branco. Cada contribuição R/G/B é calculada separadamente com atenuação, cone e oclusão. Alterar a posição da fonte verde muda as regiões de sobreposição e as sombras. A luminária branca do teto nessa região foi posicionada junto ao acesso, para preservar a leitura da mistura de cores no painel.
+
+## Transformações geométricas das obras
+
+O sistema de coordenadas usa **X** para esquerda/direita, **Y** para altura e **Z** para a direção entre a entrada e os fundos do museu. As obras combinam translação (mudança de posição), rotação (mudança de orientação) e escala (mudança de tamanho). Algumas transformações são aplicadas pelas matrizes do OpenGL; outras são calculadas diretamente nas posições dos vértices ou dos centros das peças.
+
+| Obra | Transformações usadas | Funções principais |
+| --- | --- | --- |
+| Terra | Rotação visual em torno de Y, por deslocamento da textura | `update_earth`, `draw_earth` |
+| Balança | Escala uniforme das bolas, rotação do braço em Z e translação dos pratos/bolas | `balance_update`, `balance_target_angle`, `balance_endpoint`, `balance_ball_center`, `draw_balance` |
+| Escultura desmontável | Translação dos 27 cubos em X, Y e Z | `exhibits_update`, `sculpture_piece`, `draw_exhibit_dynamic` |
+| Pêndulo | Rotação em Z ao redor do ponto de suspensão e translação da esfera em arco | `exhibits_update`, `pendulum_bob`, `draw_exhibit_dynamic` |
+| Engrenagens | Rotações em Z com velocidades proporcionais ao número de dentes | `gear_angle`, `exhibits_update`, `draw_exhibit_dynamic` |
+| Laboratório RGB | Translação da luminária verde em X e atualização da posição da luz | `exhibits_update`, `rgb_lamp`, `lighting_set_rgb` |
+
+### Composição das transformações e pivôs
+
+Em `src/geometry.c`, `box` desenha um cubo unitário centrado na origem, com coordenadas entre −0,5 e 0,5. `glScaled(size.x, size.y, size.z)` define suas dimensões e `glTranslated(pos.x, pos.y, pos.z)` o posiciona. Essa escala pode ser diferente em cada eixo para formar uma haste, um prato ou um pedestal.
+
+Para desenhar peças que giram, `object_begin` aplica uma translação até o pivô e uma rotação em Y. `object_begin_roll` usa a mesma preparação e acrescenta uma rotação em Z com `glRotated(angle, 0, 0, 1)`. Cada grupo é delimitado por `glPushMatrix` e `glPopMatrix`, de modo que as transformações de uma peça não alterem o desenho das seguintes.
+
+Considerando vetores-coluna, a parte de modelagem de uma peça desenhada por `box` dentro de `object_begin_roll` é:
+
+```text
+p_mundo = T(pivô) · Rz(ângulo) · T(centro_local) · S(dimensões) · p_unitário
+```
+
+Embora as chamadas sejam feitas na ordem translação do pivô, rotação, translação local e escala, a composição atua sobre o vértice da direita para a esquerda. Assim, primeiro a peça ganha tamanho, depois é posicionada em relação ao pivô, gira e finalmente é colocada no museu. Os ângulos passados para `glRotated` são em graus; `sin` e `cos` recebem radianos.
+
+### Terra: rotação pela matriz de textura
+
+Em `src/interaction.c`, `update_earth` aumenta `museum.earth_angle` somente enquanto o usuário segura a esfera:
+
+```text
+ângulo = (ângulo + 45 · dt) módulo 360
+```
+
+Em `draw_earth`, em `src/artwork_render.c`, esse ângulo desloca a coordenada horizontal U da textura equiretangular. O código seleciona `GL_TEXTURE`, salva a matriz e executa `glTranslated(-ângulo / 360, 0, 0)`. Depois do desenho, restaura a matriz de textura e volta a `GL_MODELVIEW`. Uma volta completa corresponde a deslocar U em uma unidade; a repetição horizontal da textura fecha o ciclo.
+
+O resultado visual é a Terra girando em torno do eixo Y. A malha esférica e seu centro permanecem fixos, enquanto os continentes mudam de posição na superfície. Isso permite manter os cálculos de iluminação e a sombra associados à esfera no espaço do museu. A altura de flutuação é definida por `EARTH_Y`; não há uma animação de subida e descida.
+
+### Balança: escala das bolas e rotação do braço
+
+Em `src/balance.c`, cada bola possui um raio independente. Enquanto ela está pressionada, `balance_update` varia esse raio a 0,24 unidade por segundo entre 0,30 e 0,85, usando um ciclo triangular: cresce, alcança o máximo, diminui e volta a crescer. Ao soltar, o raio fica no valor atingido.
+
+A escala uniforme é aplicada diretamente na geração dos vértices de `draw_sphere`, em `src/geometry.c`:
+
+```text
+vértice = centro_da_bola + raio · normal_da_esfera_unitária
+```
+
+Multiplicar as três componentes pelo mesmo raio aumenta ou diminui a esfera sem deformá-la. O centro da bola também sobe ou desce conforme o raio, mantendo sua parte inferior apoiada no prato.
+
+Para inclinar o braço, `balance_target_angle` considera o peso proporcional ao volume. Como as bolas têm o mesmo material, o fator comum do volume da esfera se cancela na comparação:
+
+```text
+ângulo_alvo = 22° · (raio_esquerdo³ − raio_direito³) / (0,85³ − 0,30³)
+```
+
+O ângulo atual se aproxima suavemente desse alvo. `draw_balance` usa `object_begin_roll` para girar o braço em Z ao redor de `(BALANCE_X, BALANCE_PIVOT_Y, BALANCE_Z)`. Para cada lado, `balance_endpoint` calcula a extremidade do braço, com `s = −1` à esquerda e `s = +1` à direita:
+
+```text
+x = BALANCE_X + s · BALANCE_ARM · cos(ângulo)
+y = BALANCE_PIVOT_Y + s · BALANCE_ARM · sin(ângulo)
+z = BALANCE_Z
+```
+
+Essas posições determinam a translação dos pratos e das bolas. Os pratos permanecem horizontais e os tirantes verticais enquanto acompanham as extremidades. Quando os raios são iguais, o ângulo-alvo é zero e a balança retorna ao equilíbrio.
+
+### Escultura desmontável: translação de cada cubo
+
+Em `src/exhibits.c`, `sculpture_piece` distribui os 27 cubos em uma grade 3 × 3 × 3. Cada peça recebe índices locais `ix`, `iy` e `iz` entre −1 e 1. O parâmetro `a = sculpture_open` varia de 0, montada, até 1, desmontada:
+
+```text
+distância_entre_centros = 0,43 · (1 + 2 · a)
+x = SCULPTURE_X + ix · distância_entre_centros
+y = SCULPTURE_Y + iy · distância_entre_centros + 0,95 · a
+z = SCULPTURE_Z + iz · distância_entre_centros
+```
+
+Ao segurar um cubo, `exhibits_update` aproxima `a` de 1; ao soltar, aproxima de 0. O espaçamento aumenta de 0,43 para 1,29 e o conjunto sobe até 0,95 unidade. Cada cubo continua com dimensões de 0,40 × 0,40 × 0,40, definidas em `draw_exhibit_dynamic`. A abertura resulta da translação dos centros das peças; suas dimensões permanecem constantes durante a animação.
+
+### Pêndulo: rotação ao redor da suspensão
+
+A haste gira no plano XY, em torno do eixo Z, com pivô em `(PENDULUM_X, PENDULUM_Y, PENDULUM_Z)`. `draw_exhibit_dynamic` posiciona a origem nesse pivô e chama `object_begin_roll` com o ângulo convertido de radianos para graus.
+
+A esfera acompanha a ponta da haste por uma posição calculada em `pendulum_bob`:
+
+```text
+x = PENDULUM_X + comprimento · sin(ângulo)
+y = PENDULUM_Y − comprimento · cos(ângulo)
+z = PENDULUM_Z
+```
+
+O comprimento é fixo em 2,6 unidades. Assim, o centro da esfera percorre um arco de circunferência. Segurar e arrastar com o mouse, ou usar as setas laterais, altera o ângulo de controle dentro de ±0,95 radiano. Segurar sem arrastar também aumenta o ângulo gradualmente.
+
+Ao soltar, `exhibits_update` integra a aceleração angular `−(9,81 / comprimento) · sin(ângulo) − 0,38 · velocidade_angular`. O primeiro termo representa a ação da gravidade e o segundo o amortecimento. A atualização usa subpassos de até 0,008 segundo, produzindo a oscilação com perda gradual de amplitude.
+
+### Engrenagens: rotações relacionadas pelo número de dentes
+
+Os centros das três rodas ficam fixos. Cada roda gira em Z ao redor do próprio centro, com a translação até esse centro seguida da rotação. Os dentes são distribuídos ao redor da roda por ângulos adicionais `dente · 360° / número_de_dentes`, e os quatro raios internos recebem deslocamentos angulares de 90°.
+
+Em `gear_angle`, em `src/exhibits.c`, uma fase compartilhada `φ` relaciona os ângulos:
+
+```text
+ângulo_i = sinal_i · φ · 16 / dentes_i + ajuste_i
+dentes = [16, 10, 12]
+sinais = [+1, −1, +1]
+ajustes = [0°, 18°, 15°]
+```
+
+O resultado é reduzido módulo 360°. O fator inversamente proporcional ao número de dentes faz a roda menor girar mais rápido, e os sinais fazem rodas vizinhas girarem em sentidos opostos. Os ajustes iniciais alinham os dentes. Ao segurar uma roda, a fase é atualizada para que a roda selecionada gire a 60° por segundo; ao soltar, a fase para de mudar.
+
+### Laboratório RGB: translação da luminária e da fonte de luz
+
+Em `exhibits_update`, a coordenada `green_x` da luminária verde percorre o intervalo de 2,6 a 6,4, a 1,2 unidade por segundo, invertendo o sentido nos limites enquanto o usuário segura a fonte. Sua altura permanece em `RGB_GREEN_Y = 4,05` e Z permanece em −12,5. `rgb_lamp` retorna essa posição para desenhar a luminária e seu suporte.
+
+Em `src/scene.c`, `lighting_set_rgb` recebe a mesma coordenada X para atualizar a fonte usada no cálculo de iluminação. Dessa forma, a geometria da luminária e a luz se deslocam juntas, alterando a sobreposição das cores e as sombras no painel. Ao soltar, a posição é mantida. Os botões RGB alteram o estado de cada canal de iluminação.
+
+### Tempo de animação e suavização
+
+As atualizações recebem `dt`, o tempo decorrido em segundos. Velocidades são multiplicadas por esse tempo para manter o ritmo das animações mesmo com taxas de quadros diferentes. Na escultura e na inclinação da balança, a aproximação ao alvo usa `valor += (alvo − valor) · (1 − exp(−k · dt))`, com `k = 4` e `k = 6`, respectivamente, evitando mudanças bruscas. A lógica das animações fica separada do desenho, principalmente em `src/exhibits.c`, `src/balance.c` e `src/interaction.c`.
 
 ## Verificações e capturas
 

@@ -2,8 +2,7 @@
 #define MUSEUM_RENDER_INTERNAL_H
 
 #include "render.h"
-
-enum { T_NONE,T_GRASS,T_STONE,T_EARTH,T_COUNT };
+#include "textures.h"
 
 /* Estado de desenho acessivel apenas aos modulos que emitem geometria. */
 typedef struct {
